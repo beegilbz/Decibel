@@ -3,21 +3,38 @@ const router = express.Router();
 const axios = require('axios');
 const { requireAuth } = require('../middleware/auth');
 
+// ── Spotify client credentials token (for non-Spotify users) ──────────────────
+let spotifyAppToken = null;
+let spotifyAppTokenExpiry = 0;
+
+const getSpotifyAppToken = async () => {
+  if (spotifyAppToken && Date.now() < spotifyAppTokenExpiry) return spotifyAppToken;
+  const creds = Buffer.from(
+    `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
+  ).toString('base64');
+  const res = await axios.post(
+    'https://accounts.spotify.com/api/token',
+    'grant_type=client_credentials',
+    { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
+  spotifyAppToken = res.data.access_token;
+  spotifyAppTokenExpiry = Date.now() + (res.data.expires_in - 60) * 1000;
+  return spotifyAppToken;
+};
+
 // ── Spotify Search ─────────────────────────────────────────────────────────────
 router.get('/spotify/search', requireAuth, async (req, res) => {
   const { q, limit = 10 } = req.query;
   if (!q) return res.status(400).json({ error: 'Query is required' });
 
   const user = req.user;
-  if (user.provider !== 'spotify') {
-    return res.status(403).json({ error: 'Must be logged in with Spotify to search Spotify' });
-  }
-
-  console.log('Spotify search params:', { q, limit, token: user.accessToken?.slice(0, 20) });
+  const token = user.provider === 'spotify'
+    ? user.accessToken
+    : await getSpotifyAppToken();
 
   try {
     const response = await axios.get('https://api.spotify.com/v1/search', {
-      headers: { Authorization: `Bearer ${user.accessToken}` },
+      headers: { Authorization: `Bearer ${token}` },
       params: { q, type: 'track' },
     });
 
