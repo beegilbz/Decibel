@@ -5,7 +5,7 @@ const session = require('express-session');
 const passport = require('passport');
 const SpotifyStrategy = require('passport-spotify').Strategy;
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const db = require('./store/inMemory');
+const db = require('./store/postgres');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -36,22 +36,26 @@ passport.use(new SpotifyStrategy(
     clientSecret: process.env.SPOTIFY_CLIENT_SECRET || 'placeholder',
     callbackURL: process.env.SPOTIFY_CALLBACK_URL || 'http://localhost:5000/auth/spotify/callback',
   },
-  (accessToken, refreshToken, expires_in, profile, done) => {
-    let user = db.findUserByProvider('spotify', profile.id);
-    if (user) {
-      db.updateUserTokens(user.id, accessToken, refreshToken);
-    } else {
-      user = db.createUser({
-        provider: 'spotify',
-        providerId: profile.id,
-        displayName: profile.displayName,
-        email: profile.emails?.[0]?.value,
-        avatar: profile.photos?.[0]?.value,
-        accessToken,
-        refreshToken,
-      });
+  async (accessToken, refreshToken, expires_in, profile, done) => {
+    try {
+      let user = await db.findUserByProvider('spotify', profile.id);
+      if (user) {
+        user = await db.updateUserTokens(user.id, accessToken, refreshToken);
+      } else {
+        user = await db.createUser({
+          provider: 'spotify',
+          providerId: profile.id,
+          displayName: profile.displayName,
+          email: profile.emails?.[0]?.value,
+          avatar: profile.photos?.[0]?.value,
+          accessToken,
+          refreshToken,
+        });
+      }
+      return done(null, user);
+    } catch (err) {
+      return done(err);
     }
-    return done(null, user);
   }
 ));
 
@@ -62,29 +66,37 @@ passport.use(new GoogleStrategy(
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'placeholder',
     callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/auth/google/callback',
   },
-  (accessToken, refreshToken, profile, done) => {
-    let user = db.findUserByProvider('google', profile.id);
-    if (user) {
-      db.updateUserTokens(user.id, accessToken, refreshToken);
-    } else {
-      user = db.createUser({
-        provider: 'google',
-        providerId: profile.id,
-        displayName: profile.displayName,
-        email: profile.emails?.[0]?.value,
-        avatar: profile.photos?.[0]?.value,
-        accessToken,
-        refreshToken,
-      });
+  async (accessToken, refreshToken, profile, done) => {
+    try {
+      let user = await db.findUserByProvider('google', profile.id);
+      if (user) {
+        user = await db.updateUserTokens(user.id, accessToken, refreshToken);
+      } else {
+        user = await db.createUser({
+          provider: 'google',
+          providerId: profile.id,
+          displayName: profile.displayName,
+          email: profile.emails?.[0]?.value,
+          avatar: profile.photos?.[0]?.value,
+          accessToken,
+          refreshToken,
+        });
+      }
+      return done(null, user);
+    } catch (err) {
+      return done(err);
     }
-    return done(null, user);
   }
 ));
 
 passport.serializeUser((user, done) => done(null, user.id));
-passport.deserializeUser((id, done) => {
-  const user = db.findUserById(id);
-  done(null, user || false);
+passport.deserializeUser(async (id, done) => {
+  try {
+    const user = await db.findUserById(id);
+    done(null, user || false);
+  } catch (err) {
+    done(err);
+  }
 });
 
 // ── Routes ─────────────────────────────────────────────────────────────────────
@@ -107,6 +119,11 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // ── Start ──────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`🎵 Decibel server running on http://localhost:${PORT}`);
+db.initDb().then(() => {
+  app.listen(PORT, () => {
+    console.log(`🎵 Decibel server running on http://localhost:${PORT}`);
+  });
+}).catch((err) => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
 });
