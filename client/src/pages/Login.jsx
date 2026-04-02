@@ -2,11 +2,15 @@ import React from 'react';
 
 export default function Login() {
   const handleSpotifyLogin = () => {
-    window.location.href = 'http://127.0.0.1:5001/auth/spotify';
+    window.location.href = process.env.NODE_ENV === 'production'
+      ? '/auth/spotify'
+      : 'http://127.0.0.1:5001/auth/spotify';
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = 'http://127.0.0.1:5001/auth/google';
+    window.location.href = process.env.NODE_ENV === 'production'
+      ? '/auth/google'
+      : 'http://127.0.0.1:5001/auth/google';
   };
 
   return (

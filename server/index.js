@@ -97,6 +97,15 @@ app.use('/api/music', require('./routes/music'));
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
+// ── Serve React in production ──────────────────────────────────────────────────
+if (process.env.NODE_ENV === 'production') {
+  const path = require('path');
+  app.use(express.static(path.join(__dirname, '../client/build')));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
+  });
+}
+
 // ── Start ──────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🎵 Decibel server running on http://localhost:${PORT}`);
